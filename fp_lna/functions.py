@@ -10,12 +10,11 @@ import matplotlib.pyplot as plt
 
 import scipy
 
-from scipy.stats.distributions import chi2
-
 # for the EuMa sim
 from scipy.stats import multivariate_normal
 # for the LNA
 from scipy.integrate import solve_ivp
+from scipy.interpolate import UnivariateSpline
 
 
 #from fplanck_fmod.utility import value_to_vector
@@ -404,22 +403,38 @@ def get_eigen_evolution(V_t):
             new_eig[:, ii, :] = eigen_V_t[:, ii, :]
     return new_eig
 
-def closest_to_saddle(x_t, xs):
-    how_many_cond = x_t.shape[0]
-    if how_many_cond == 1:
-        how_far_saddle_all_time_bb = LA.norm(x_t[0,:, :] - xs, axis = 1)
-        min_pos = how_far_saddle_all_time_bb.argmin()
-        #min_val = how_far_saddle_all_time_bb[min_pos]
-        closest_to_saddle_data = min_pos
-    else:
-        closest_to_saddle_data = np.zeros((how_many_cond), dtype = np.int8)
-        for bb in range(how_many_cond):
-            how_far_saddle_all_time_bb = LA.norm(x_t[bb,:, :] - xs, axis = 1)
-            min_pos = how_far_saddle_all_time_bb.argmin()
-            #min_val = how_far_saddle_all_time_bb[min_pos]
-            closest_to_saddle_data[bb] = min_pos
-    return closest_to_saddle_data
+def get_mapping_from_tau_Tos(m_unstable, x_unstable, Sad, direction_X_scaled, arclength_s):
+    # tangent space
+    # v_vector*tau+sad
 
+    # Rotate tangent and manifold
+    thera_rotate = -np.arctan(m_unstable)
+    # with the minus it is graphically more consistent
+    R_theta = np.array([[np.cos(thera_rotate), -np.sin(thera_rotate)], [np.sin(thera_rotate), np.cos(thera_rotate)]])
+
+    # rotating the saddle, thus knowing the two extremes
+    x_unstable_man_rotated = (R_theta@x_unstable.T).T
+
+    Sad_rotated = (R_theta@Sad.T).T
+
+    v_vector = direction_X_scaled
+    v_vector_rotated = R_theta@v_vector
+    
+    #tangent_sample_rotated = (R_theta@tangent_sample.T).T
+
+    tangent_rotated = np.column_stack([x_unstable_man_rotated[:,0],np.ones(x_unstable.shape[0])*Sad_rotated[1]])
+    tangent_original = (LA.inv(R_theta)@tangent_rotated.T).T
+    # [x_tan, y_tan] = v* [tau_x, tau_y] + Sad
+    # # solving for tau
+    #tau_x = (tangent_original[:,0] - Sad[0][0])/v_vector[0]
+    tau_y = (tangent_original[:,1] - Sad[1])/v_vector[1]
+    spline_tau_given_s = UnivariateSpline(arclength_s, tau_y, k=3, s=0)
+    #spline_tau_given_sigma = UnivariateSpline(sigma_arclen, tau_y, k=3, s=0)
+
+    #rho(tau) = s
+    s_tau_gives_s = UnivariateSpline(tau_y, arclength_s, k=3, s=0)
+    #rho(s) = tau
+    return s_tau_gives_s
 
 ######## FUNCTIONS EXSISTING
 

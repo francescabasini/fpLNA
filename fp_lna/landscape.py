@@ -59,6 +59,7 @@ class landscape:
         Nt = 2**6
         s = np.linspace(0,1,Nt)
         
+        vec_one_min_one = np.array([-1, 1])
         for stable in stable_unstable:
             if stable:
                 # if we want the stable, we set integration to backward
@@ -68,7 +69,21 @@ class landscape:
                                            self.lims, self.tolerance, self.iterations)
 				# x_stable = x_stable[x_stable[:, 0].argsort()]
                 self.x_stable = manifold
+                # assuming that it's a spline from x to y
+                spline_stable = UnivariateSpline(manifold[:,0], manifold[:,1], k=3, s=0)
+                p_der_stab = spline_stable.derivative()
+                y_der_saddle_stable = p_der_stab(self.xs[0])
+                self.m_stable = y_der_saddle_stable
+                self.q_stable = self.xs[1] - self.xs[0]*y_der_saddle_stable
+
+                # vector P
+                tangent_stable = vec_one_min_one*self.m_stable+self.q_stable
+                tang_stab_coord = np.column_stack([vec_one_min_one, tangent_stable])
+                # directional vector P
+                direction_P = tang_stab_coord[1, :] - tang_stab_coord[0,:]
+                self.direction_P_scaled = direction_P/LA.norm(direction_P) 
             else:
+                # doing the unstable
                 forward = True
                 x_initial = get_x_initial(self.xs, self.xa, self.xb, stable, self.J, self.uvw, s)
                 manifold = string1_adapted(x_initial, self.G, self.uvw, forward, 
@@ -76,6 +91,21 @@ class landscape:
                 # sort both in ascending order wrt y
                 manifold = manifold[manifold[:, 1].argsort()]
                 self.x_unstable = manifold
+                # know we regress on y to x
+                spline_unstable = UnivariateSpline(manifold[:,1], manifold[:,0], k=3, s=0)
+                p_der = spline_unstable.derivative()
+                y_der_saddle=p_der(self.xs[1])
+                s1_unstable = y_der_saddle
+                self.m_unstable = 1/s1_unstable
+                s0_unstable = self.xs[0] - self.xs[1]*s1_unstable
+                self.q_unstable = -s0_unstable/s1_unstable
+
+                # direction X and Y
+                tangent_unstable = vec_one_min_one*s1_unstable+s0_unstable
+                tang_unst_coord = np.column_stack([tangent_unstable, vec_one_min_one])
+                direction_X = tang_unst_coord[1,:] - tang_unst_coord[0,:]
+                self.direction_X_scaled= direction_X/LA.norm(direction_X) 
+                self.direction_Y_scaled = np.array([-self.direction_X_scaled[1], self.direction_X_scaled[0]])
 		
 		# arclength par
         alpha_length = np.hstack([0,np.cumsum(LA.norm(self.x_unstable[:-1,:] - self.x_unstable[1:,:], axis = 1))])
@@ -100,8 +130,10 @@ class landscape:
         Sa, Sb = arclength_s[[0, -1]]
         self.Sa = Sa
         self.Sb = Sb
-        # more on the geometry
-
+        
+        # more on the mapping geometry
+        self.spline_tau_gives_s = get_mapping_from_tau_Tos(self.m_unstable, self.x_unstable, self.xs, self.direction_X_scaled, self.arclength_s)
+        
     @staticmethod
     def _d_C_dV_(t, z, Big_Sigma, uvw, G_point_lna, J_lna):
         #z contains the:
@@ -221,7 +253,7 @@ class landscape:
             "eigen_V_t": eigen_V_t_all_ic}
         return LNA_res 
     
-    def LNA_check(self, m_0, V_t0, Big_Sigma, MaxTime, dt, prob = 0.9, thick = 50):
+    def LNA_check(self, m_0, V_t0, Big_Sigma, MaxTime, dt, containment, prob = 0.9, thick = 50):
         # JUST RETURN THE LNA CHECK and TIME at which it passes - "text"
         LNA_res = self.get_LNA(m_0, V_t0, Big_Sigma, MaxTime, dt)
         x_t = LNA_res["x_t"]
@@ -230,6 +262,11 @@ class landscape:
         LNA_t = LNA_res["t"]
         eigen_V_t= LNA_res["eigen_V_t"]
 
+        # defining thresholds
+        self.Sa_e = self.Sa*containment/100
+        self.Sb_e = self.Sb*containment/100
+
+
         # closest point to saddle
         close_times = closest_to_saddle(x_t, self.xs)
         how_many_ic = len(m_0.shape)
@@ -237,18 +274,69 @@ class landscape:
             selected_mean = x_t[0,close_times, :].reshape(1, 2)[0]
             selected_cov = V_t[0,close_times, :].reshape(2, 2)
             ellipe_points_all_ic = return_ellipse_points(selected_mean, selected_cov, prob, thick)
-        else:
-            how_many_blobs = m_0.shape[0]
-            ellipe_points_all_ic = np.zeros((how_many_blobs, thick, 2))
-            for ii in range(how_many_blobs):
-                selected_mean = x_t[ii,close_times[ii], :].reshape(1, 2)[0]
-                selected_cov = V_t[ii,close_times[ii], :].reshape(2, 2)
-                ellipe_points = return_ellipse_points(selected_mean, selected_cov, prob, thick)
-                ellipe_points_all_ic[ii, :, :] = ellipe_points
-        
-        ellipe_points_all_ic
+            
+            # check intersection with stable
+            intersect_stable = intersection_check(ellipe_points_all_ic, self.m_stable, self.q_stable)
+            if not intersect_stable:
+                # fancier writing
+                print("LNA Gaussian is not intersecting tangent to stable manifold at its closest to the saddle.")
+                print("Returning density at given T")
+                # FP not required, return density at a given T
+                return intersect_stable, selected_mean, selected_cov
+            # CHECK INTERSECTION WITH UNSTABLE
+            else: 
+                print("LNA density is intersecting the stable manifold. FP-LNA required.")
+                print("Returning density with first intersection with unstable manifold.")
+                # restart from time 0
+                unstable_cross_pos = 0
+                not_in_range = True
+                while (not_in_range & (unstable_cross_pos<=close_times)):
+                    selected_mean_cross = x_t[0,unstable_cross_pos, :].reshape(1, 2)[0]
+                    selected_cov_cross = V_t[0,unstable_cross_pos, :].reshape(2, 2)
+                    ellipe_points_all_ic = return_ellipse_points(selected_mean_cross, selected_cov_cross, prob, thick)
 
-        return 
+                    intersect_unstable = intersection_check(ellipe_points_all_ic, self.m_unstable, self.q_unstable)
+                    if not intersect_unstable:
+                        unstable_cross_pos = unstable_cross_pos+1
+                    else:
+                        # it crossed, calculate how much
+                        projection_vals, proj_range, in_range = condition_on_s(ellipe_points_all_ic, self.m_unstable, self.q_unstable, self.m_stable,
+                        self.direction_X_scaled, self.xs, self.arclength_s, self.spline_tau_gives_s, self.Sa_e, self.Sb_e)
+                        if in_range:
+                            unstable_cross_found = unstable_cross_pos
+                            if unstable_cross_pos<=close_times:
+                                unstable_cross_pos = unstable_cross_pos+1
+                        else:
+                            not_in_range = False
+                            unstable_cross_pos = np.inf
+
+                selected_mean_cross_found = x_t[0,unstable_cross_found, :].reshape(1, 2)[0]
+                selected_cov_cross_found = V_t[0,unstable_cross_found, :].reshape(2, 2)
+                print(unstable_cross_found)
+                return intersect_stable, selected_mean_cross_found, selected_cov_cross_found
+
+            
+
+        # # no time to do the N-dimensional    
+        # else:
+        #     how_many_blobs = m_0.shape[0]
+        #     ellipe_points_all_ic = np.zeros((how_many_blobs, thick, 2))
+        #     for ii in range(how_many_blobs):
+        #         selected_mean = x_t[ii,close_times[ii], :].reshape(1, 2)[0]
+        #         selected_cov = V_t[ii,close_times[ii], :].reshape(2, 2)
+        #         ellipe_points = return_ellipse_points(selected_mean, selected_cov, prob, thick)
+        #         ellipe_points_all_ic[ii, :, :] = ellipe_points
+        
+        # ellipe_points_all_ic
+
+    # def FP_setup(self, ): #takes LNA inputs
+    #     """ Should return the setup for the FP solver:  
+    #     arclength range s,
+    #     initial distribution - p0
+    #     spline for drift - s_dot
+    #     spline for diffusion - sigma(s)
+    #     effective (remaining) - T
+    #     """
 
 # 	def propagate_interval(self, initial, tf, Nsteps=None, dt=None, normalize=True):
 #         """Propagate an initial probability distribution over a time interval, return time and the probability distribution at each time-step
