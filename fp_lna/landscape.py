@@ -6,6 +6,7 @@ from scipy import optimize
 from scipy.stats import multivariate_normal
 
 from numpy import linalg as LA
+from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
 #import scipy
@@ -20,6 +21,7 @@ from scipy.interpolate import UnivariateSpline
 from fp_lna.functions import *
 from fp_lna.lna_check_functions import *
 from fp_lna.fokker_planck_solver import *
+from fp_lna.loglik_recpnstruction import *
 
 class landscape:
     def __init__(self, potential_V, Gradient_G, G_point, Jacobian_J, G_point_lna, J_lna, uvw, lims, 
@@ -464,21 +466,29 @@ class landscape:
             # customisable
             interval_track = dt*10
             t_no_flux = (len(datatrack_flux.data)-1)*(interval_track)
+            #return fp_range_s, fp_solution
 
-            return fp_range_s, fp_solution
-            #if t_no_flux < observed_t:
+            if t_no_flux < observed_t:
                 # no flux reached before observed t
                 ## 2D Reconstruction
+                
                 # density reconstruction
                 # loglik = np.sum--- 2dMixture
-            #else:
+            else:
                 # need to compute the density of projected data
-                # fp_range_s, fp_solution
-                #loglik = 
+                #project_data
+                data_on_Wu = project_observed_on_Wu(observed_data, 1/self.m_unstable, -self.q_unstable/self.m_unstable, 
+                                                    self.m_stable, self.direction_X_scaled, self.xs, self.spline_tau_gives_s)
+                # interpolate fp with spline
+                fp_spline = interp1d(fp_range_s.data, fp_solution.data, kind='cubic')
+                # density of data in fp
+                data_density_fp = fp_spline(data_on_Wu)
+                # loglikelihood
+                loglik = np.sum(np.log(data_density_fp))
         else:
             # compute likelihood for the multivariate gaussian
             loglik = np.sum(np.log(multivariate_normal.pdf(observed_data, check_mean, checks_covar)))
-        #return loglik
+        return loglik
 
 
 ######## OLD VERSION OF STOPPIN CROSS UNSTABLE

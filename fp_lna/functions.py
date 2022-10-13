@@ -17,9 +17,6 @@ from scipy.integrate import solve_ivp
 from scipy.interpolate import UnivariateSpline
 
 
-#from fplanck_fmod.utility import value_to_vector
-from scipy.interpolate import RegularGridInterpolator
-
 # Function to check again
 def eliminate_duplicates(Fixed_points_found):
 	n = Fixed_points_found.shape[0]
@@ -444,76 +441,3 @@ def get_mapping_from_tau_Tos(m_unstable, x_unstable, Sad, direction_X_scaled, ar
     s_tau_gives_s = UnivariateSpline(tau_y, arclength_s, k=3, s=0)
     #rho(s) = tau
     return s_tau_gives_s
-
-######## FUNCTIONS EXSISTING
-
-def gausMix_oneD_pdf(means, variances, weights):
-    """A 1 dimensional Mixture of n Gaussians probability distribution function
-
-    Arguments:
-        means          means of Gaussians (n vector)
-        variances      covariance structure of Gaussians (n vector)
-        weights        weights of the n-gaussians (n vector)
-    """
-
-    ndim = len(means)
-
-    def pdf(*args): #only gives x
-        values = np.zeros_like(args[0])
-        
-        for N, arg in enumerate(args):
-            # would work in N dim
-            for i in range(ndim):
-                kernels = np.ones_like(args[0])
-                kernels *= 1/np.sqrt(2*np.pi*variances[i]) * np.exp(-np.square((arg - means[i]))/(variances[i]*2))
-                values += kernels*weights[i]
-            return values
-    return pdf
-
-def pdf0_from_data(range_pdf, data_pdf):
-    """create the initial distribution from data on a grid
-    
-    Arguments:
-        grid     list of grid arrays along each dimension
-        data     pdf0 data
-    """
-    grid = np.asarray(range_pdf)
-    if grid.ndim == data_pdf.ndim == 1:
-        grid = (grid,)
-
-    f = RegularGridInterpolator(grid, data_pdf, bounds_error=False, fill_value=None)
-    def pdf(*args):
-        values = f(args)
-        #values = interp_f(given_sim_grid)
-        return values/np.sum(values)
-
-    # still normalize?
-    return pdf
-
-
-#------------ WORK IN PROGRESS -----------
-
-# def gausMix_ND_pdf(means, covariances, weights):
-#     """A N dimensional Mixture of n Gaussians probability distribution function
-
-#     Arguments:
-#         means          means of Gaussians (n vector)
-#         covariances    covariance structure of Gaussians (nx NxN array)
-#         weights        weights of the n-gaussians (n vector)
-#     """
-
-#     ndim = len(means)
-
-#     def pdf(*args): #only gives x
-#         values = np.zeros_like(args[0])
-        
-#         for n, arg in enumerate(args):
-#             print(n)
-#             # would work in N dim
-#             kernels = np.ones_like(args[0])
-#             kernels *= np.exp(-((arg[n]-means)*LA.inv(covariances[n])*(arg[n]-means))/2) / np.sqrt((2*np.pi)**ndim*LA.det(covariances[n]))
-                
-#             values += kernels*weights[n]
-#         return values
-#     return pdf
-
