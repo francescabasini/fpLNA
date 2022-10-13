@@ -296,11 +296,16 @@ def get_eigen_evolution(V_t):
     on a square matrix
     - Returns the eigenvalues for each of the selected distances and 
       in decreasing order
+    - Also returns 1st eigendirection
     """
+    if len(V_t.shape)==2:
+        V_t = V_t[np.newaxis,:,: ]
+
     how_many_blobs = V_t.shape[0]
     total_times = V_t.shape[1]
     
     eigen_V_t = np.zeros((total_times, how_many_blobs, 2))
+    eigen_DIR_V_t = np.zeros((total_times, how_many_blobs, 2))
     eigen_dir_prev = np.array([[0,-1], [0, 0]])
     if how_many_blobs == 1:
         ii = 0
@@ -343,6 +348,8 @@ def get_eigen_evolution(V_t):
                 # eigen_val_this_t_blob(1) == eigen_val_this_t_blob(2)   
             # update the count of eigenvalues
             eigen_V_t[jj, ii,:] = eigen_val_this_t_blob
+            #28-07
+            eigen_DIR_V_t[jj,ii,:] = eigen_dir_this_t_blob[:,0]
             # update previus distance
             eigen_dir_prev = eigen_dir_this_t_blob
             eigen_val_prev = eigen_val_this_t_blob
@@ -388,6 +395,8 @@ def get_eigen_evolution(V_t):
                 
                 # update the count of eigenvalues
                 eigen_V_t[jj, ii,:] = eigen_val_this_t_blob
+                # 28-07
+                eigen_DIR_V_t[jj,ii,:] = eigen_dir_this_t_blob[:,0]
                 # update previus distance
                 eigen_dir_prev = eigen_dir_this_t_blob
                 eigen_val_prev = eigen_val_this_t_blob
@@ -401,7 +410,7 @@ def get_eigen_evolution(V_t):
         else:
             # same as the old one
             new_eig[:, ii, :] = eigen_V_t[:, ii, :]
-    return new_eig
+    return new_eig.squeeze(), eigen_DIR_V_t.squeeze()
 
 def get_mapping_from_tau_Tos(m_unstable, x_unstable, Sad, direction_X_scaled, arclength_s):
     # tangent space
@@ -437,65 +446,6 @@ def get_mapping_from_tau_Tos(m_unstable, x_unstable, Sad, direction_X_scaled, ar
     return s_tau_gives_s
 
 ######## FUNCTIONS EXSISTING
-
-def delta_function(r0):
-    """a discrete equivalent of a dirac-delta function centered at r0"""
-    r0 = np.atleast_1d(r0)
-
-    def pdf(*args):
-        values = np.zeros_like(args[0])
-
-        diff = sum([(r0[i] - args[i])**2 for i in range(len(args))])
-        idx = np.unravel_index(np.argmin(diff), diff.shape)
-        values[idx] = 1
-
-        return values
-        
-    return pdf
-
-def gaussian_pdf(center, width):
-    """A Gaussian probability distribution function
-    -always assuming independence between n dims-
-    
-    Arguments:
-        center    center of Gaussian (scalar or vector)
-        width     width of Gaussian (scalar or vector)
-    """
-
-    center = np.atleast_1d(center)
-    ndim = len(center)
-    width = value_to_vector(width, ndim)
-
-    def pdf(*args):
-        values = np.ones_like(args[0])
-
-        for i, arg in enumerate(args):
-            values *= np.exp(-np.square((arg - center[i])/width[i]))
-
-        return values/np.sum(values)
-
-    return pdf
-
-def uniform_pdf(func=None):
-    """A uniform probability distribution function
-    
-    Arguments:
-        func    a boolean function specifying region of uniform probability (default: everywhere)
-    """
-
-    def pdf(*args):
-        if func is None:
-            values = np.ones_like(args[0])
-        else:
-            values = np.zeros_like(args[0])
-            idx = func(*args)
-            values[idx] = 1
-
-        return values/np.sum(values)
-
-    return pdf
-
-
 
 def gausMix_oneD_pdf(means, variances, weights):
     """A 1 dimensional Mixture of n Gaussians probability distribution function

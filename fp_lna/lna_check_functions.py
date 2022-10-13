@@ -8,21 +8,33 @@ from scipy.stats.distributions import chi2
 from scipy.interpolate import RegularGridInterpolator
 from scipy.interpolate import UnivariateSpline
 
+def get_t_lambda(eigen_seq, tol = 1e-05):
+    """
+    Function to find the first time at which the eigenvalue increase
+    can be consider linear in logscale.
+    """
+    grad_2 = np.gradient(np.gradient(np.log10(eigen_seq)))
+    stable_derivative = np.where(grad_2<-tol)
+    t_lambda = np.diff(stable_derivative).argmax()
+    return t_lambda
 
-def closest_to_saddle(x_t, xs):
-    how_many_cond = x_t.shape[0]
-    if how_many_cond == 1:
-        how_far_saddle_all_time_bb = LA.norm(x_t[0,:, :] - xs, axis = 1)
-        min_pos = how_far_saddle_all_time_bb.argmin()
-        #min_val = how_far_saddle_all_time_bb[min_pos]
-        closest_to_saddle_data = min_pos
-    else:
-        closest_to_saddle_data = np.zeros((how_many_cond), dtype = np.int8)
-        for bb in range(how_many_cond):
-            how_far_saddle_all_time_bb = LA.norm(x_t[bb,:, :] - xs, axis = 1)
-            min_pos = how_far_saddle_all_time_bb.argmin()
-            #min_val = how_far_saddle_all_time_bb[min_pos]
-            closest_to_saddle_data[bb] = min_pos
+def get_closest_t_to_saddle(x_t, xs):
+    """
+    Function to find the time at which LNA means is closest to saddle in L2 sense.
+    """
+    #how_many_cond = x_t.shape[0]
+    #if how_many_cond == 1:
+    how_far_saddle_all_time_bb = LA.norm(x_t - xs, axis = 1)
+    min_pos = how_far_saddle_all_time_bb.argmin()
+    #min_val = how_far_saddle_all_time_bb[min_pos]
+    closest_to_saddle_data = min_pos
+    # else:
+    #     closest_to_saddle_data = np.zeros((how_many_cond), dtype = np.int8)
+    #     for bb in range(how_many_cond):
+    #         how_far_saddle_all_time_bb = LA.norm(x_t[bb,:, :] - xs, axis = 1)
+    #         min_pos = how_far_saddle_all_time_bb.argmin()
+    #         #min_val = how_far_saddle_all_time_bb[min_pos]
+    #         closest_to_saddle_data[bb] = min_pos
     return closest_to_saddle_data
 
 def return_ellipse_points(means, covariance, prob, thick = 50):
@@ -65,7 +77,7 @@ def proj_onto_lineA_along_lineB(xy_coord_p, mA, qA, mB):
     # A is unstable
     #m2 = 1/s1
     #q2 = -s0/s1
-    qB = xy_coord_p[1]- mB*xy_coord_p[0]
+    qB = xy_coord_p[1]- mB*xy_coord_p[0] 
     #  intersection
     intersection_x = (qA-qB)/(mB-mA)
     intersection_y = mB*intersection_x+qB
@@ -120,24 +132,24 @@ def condition_on_s(the_ellipse_p, m_unstable, q_unstable, m_stable,
             return proj_onto_man, proj_onto_man[1]-proj_onto_man[0], True
         else:
             return proj_onto_man, proj_onto_man[1]-proj_onto_man[0], False
-
+    # projecting manifold values, width and whether inrange
  
 
 
 ##### EXISTIG FUNCTIONS
-def force_from_data(grid, data):
-    """create a force function from data on a grid
+# def force_from_data(grid, data):
+#     """create a force function from data on a grid
     
-    Arguments:
-        grid     list of grid arrays along each dimension
-        data     force data (shape [ndim, ...])
-    """
-    grid = np.asarray(grid)
-    if grid.ndim == data.ndim == 1:
-        grid = (grid,)
+#     Arguments:
+#         grid     list of grid arrays along each dimension
+#         data     force data (shape [ndim, ...])
+#     """
+#     grid = np.asarray(grid)
+#     if grid.ndim == data.ndim == 1:
+#         grid = (grid,)
 
-    f = RegularGridInterpolator(grid, np.moveaxis(data, 0, -1), bounds_error=False, fill_value=None)
-    def force(*args):
-        return np.moveaxis(f(args), -1, 0)
+#     f = RegularGridInterpolator(grid, np.moveaxis(data, 0, -1), bounds_error=False, fill_value=None)
+#     def force(*args):
+#         return np.moveaxis(f(args), -1, 0)
 
-    return force
+#     return force
