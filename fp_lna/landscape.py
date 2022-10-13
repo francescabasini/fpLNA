@@ -21,7 +21,7 @@ from scipy.interpolate import UnivariateSpline
 from fp_lna.functions import *
 from fp_lna.lna_check_functions import *
 from fp_lna.fokker_planck_solver import *
-from fp_lna.loglik_recpnstruction import *
+from fp_lna.loglik_reconstruction import *
 
 class landscape:
     def __init__(self, potential_V, Gradient_G, G_point, Jacobian_J, G_point_lna, J_lna, uvw, lims, 
@@ -348,8 +348,8 @@ class landscape:
         t_close = get_closest_t_to_saddle(x_t, self.xs)
         
         # closest point to saddle
-        print("Print t_close: {}".format(t_close))
-        print("Print t_lambda: {}".format(t_lambda))
+        print("Print t_close: {}".format(t_close*dt))
+        print("Print t_lambda: {}".format(t_lambda*dt))
 
         ###########################################
         # # check intersection with stable manifold
@@ -420,7 +420,7 @@ class landscape:
                     tt -=1
             # found critical time of stopping rule
             t_star = np.copy(tt)
-            print("t_star: {}".format(t_star))
+            print("t_star: {}".format(t_star*dt))
             # fpLNA necessary? True
             return True, selected_mean_stop_find, selected_cov_stop_find, t_star #, projection_vals
 
@@ -452,6 +452,7 @@ class landscape:
 
         # run as long as the difference between t* and observed_t
         t_delta_start_observed = observed_t-t_star_checks*dt
+        print("fp running for time {}".format(t_delta_start_observed))
         if checks_done[0]:
             # there must be a smarter way to do this
             arclength_s_bitOut, spline_p0s_given_s, spline_vf_given_s, spline_dd_s_given_s = self.initialise_FP(
@@ -465,16 +466,14 @@ class landscape:
                                                             interval_track = dt*10)
             # customisable
             interval_track = dt*10
-            t_no_flux = (len(datatrack_flux.data)-1)*(interval_track)
+            #this it the no flux time in fp scale
+            t_no_flux_fp= (len(datatrack_flux.data)-1)*(interval_track)
+            
             #return fp_range_s, fp_solution
 
-            if t_no_flux < observed_t:
-                # no flux reached before observed t
-                ## 2D Reconstruction
-                
-                # density reconstruction
-                # loglik = np.sum--- 2dMixture
-            else:
+            if (t_delta_start_observed-t_no_flux_fp)<dt*10:
+                print("No flux condition was not satisfied, data projected on manifold")
+
                 # need to compute the density of projected data
                 #project_data
                 data_on_Wu = project_observed_on_Wu(observed_data, 1/self.m_unstable, -self.q_unstable/self.m_unstable, 
@@ -485,6 +484,18 @@ class landscape:
                 data_density_fp = fp_spline(data_on_Wu)
                 # loglikelihood
                 loglik = np.sum(np.log(data_density_fp))
+            else:
+                # no flux reached before observed t
+                # this is the time of no flux in positional
+                t_no_flux = (t_star_checks*dt + t_no_flux_fp)
+            
+                print("t_no_flux_fp: {}".format(t_no_flux))
+                print("2D reconstruction")
+                ## 2D Reconstruction
+                
+                # density reconstruction
+                # loglik = np.sum--- 2dMixture
+                loglik = 0
         else:
             # compute likelihood for the multivariate gaussian
             loglik = np.sum(np.log(multivariate_normal.pdf(observed_data, check_mean, checks_covar)))

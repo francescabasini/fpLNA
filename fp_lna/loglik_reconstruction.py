@@ -39,7 +39,7 @@ def project_observed_on_Wu(observed_data, s1, s0, m_tang_STAB, direction_X_scale
     unstable manifold in arclength parameterisation
     """
     nn_data = observed_data.shape[0]
-    points_on_tangent = np.array([find_proj_tangent(data_i, s1, s0, m_tang_STAB) for data_i in range(nn_data)])
+    points_on_tangent = np.array([find_proj_tangent(observed_data[data_i, :], s1, s0, m_tang_STAB) for data_i in range(nn_data)])
     # projected_sims_Together = proj_all_time(Stoch_sims_all_together, 1/the_landscape.m_unstable, -the_landscape.q_unstable/the_landscape.m_unstable,
                                #the_landscape.m_stable, the_landscape.q_unstable)
     # from tangent to Wu - based on the y
