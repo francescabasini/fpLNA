@@ -461,88 +461,103 @@ class landscape:
                                                                     Vt_critical = checks_covar, Big_Sigma = Big_Sigma,
                                                                     range_fp = 400)
 
-            fp_range_s, fp_solution, datatrack_flux = FP_run(t_delta_start_observed, arclength_s_bitOut, 
+            # fp_range_s, fp_solution, datatrack_flux = FP_run_0flux(t_delta_start_observed, arclength_s_bitOut, 
+            #                                                 spline_p0s_given_s,spline_vf_given_s, spline_dd_s_given_s,
+            #                                                 # could customise
+            #                                                 interval_track = dt*10)
+            fp_range_s, fp_solution = FP_run(t_delta_start_observed, arclength_s_bitOut, 
                                                             spline_p0s_given_s,spline_vf_given_s, spline_dd_s_given_s,
                                                             # could customise
                                                             interval_track = dt*10)
             # customisable
-            interval_track = dt*10
+            #interval_track = dt*10
             #this it the no flux time in fp scale
-            t_no_flux_fp= (len(datatrack_flux.data)-1)*(interval_track)
+            #t_no_flux_fp= (len(datatrack_flux.data)-1)*(interval_track)
             
             #return fp_range_s, fp_solution
-
-            if (t_delta_start_observed-t_no_flux_fp)<dt*10:
-                print("No flux condition was not satisfied, data projected on manifold")
-
-                # need to compute the density of projected data
-                #project_data
-                data_on_Wu = project_observed_on_Wu(observed_data, 1/self.m_unstable, -self.q_unstable/self.m_unstable, 
-                                                    self.m_stable, self.direction_X_scaled, self.xs, self.spline_tau_gives_s)
-                # interpolate fp with spline
-                fp_spline = interp1d(fp_range_s.data, fp_solution.data, kind='cubic')
-                # density of data in fp
-                data_density_fp = fp_spline(data_on_Wu)
-                # loglikelihood
-                loglik = np.sum(np.log(data_density_fp))
-            else:
-                # no flux reached before observed t
-                # this is the time of no flux in positional
-                t_no_flux = (t_star_checks*dt + t_no_flux_fp)
+            print("Computing density on projected data")
+            # compute the density of projected data
+            #project_data
+            data_on_Wu = project_observed_on_Wu(observed_data, 1/self.m_unstable, -self.q_unstable/self.m_unstable, 
+                                                self.m_stable, self.direction_X_scaled, self.xs, self.spline_tau_gives_s)
+            # interpolate fp with spline
+            fp_spline = interp1d(fp_range_s.data, fp_solution.data, kind='cubic')
+            # density of data in fp
+            data_density_fp = fp_spline(data_on_Wu)
+            # loglikelihood
+            loglik = np.sum(np.log(data_density_fp))
             
-                print("t_no_flux_fp: {}".format(t_no_flux))
-                print("2D reconstruction")
+            # if (t_delta_start_observed-t_no_flux_fp)<dt*10:
+            #     print("No flux condition was not satisfied, data projected on manifold")
 
-                lna2_time = observed_t - t_no_flux
-                print("Running the two lnas until observed time, remaining {}".format(lna2_time))
+            #     # need to compute the density of projected data
+            #     #project_data
+            #     data_on_Wu = project_observed_on_Wu(observed_data, 1/self.m_unstable, -self.q_unstable/self.m_unstable, 
+            #                                         self.m_stable, self.direction_X_scaled, self.xs, self.spline_tau_gives_s)
+            #     # interpolate fp with spline
+            #     fp_spline = interp1d(fp_range_s.data, fp_solution.data, kind='cubic')
+            #     # density of data in fp
+            #     data_density_fp = fp_spline(data_on_Wu)
+            #     # loglikelihood
+            #     loglik = np.sum(np.log(data_density_fp))
+            # else:
+            #     # no flux reached before observed t
+            #     # this is the time of no flux in positional
+            #     t_no_flux = (t_star_checks*dt + t_no_flux_fp)
+            
+            #     print("t_no_flux_fp: {}".format(t_no_flux))
+            #     print("2D reconstruction")
 
-                ## 2D Reconstruction
-                s_peak, sigma_firstComp = find_peaks_variances(fp_range_s.data, fp_solution.data)
-                fp_mean_manifold_x = self.spline_x_s_given_s(s_peak)
-                fp_mean_manifold_y = self.spline_y_s_given_s(s_peak)
+            #     lna2_time = observed_t - t_no_flux
+            #     print("Running the two lnas until observed time, remaining {}".format(lna2_time))
 
-                fp_means_manifold = np.column_stack([fp_mean_manifold_x, fp_mean_manifold_y])
-                #print("sigma of components bottom {} upper {}".format(sigma_firstComp[0], sigma_firstComp[1]))
-                # take LNA final solution
-                LNA_res = checks_done[4]
-                x_t_final = LNA_res["x_t"].squeeze()[-1,:]
-                V_t_final = LNA_res["V_t"].squeeze()[-1,:]
-                print("Limiting Variance")
-                lna_sigma = np.sqrt(min(V_t_final[0], V_t_final[3]))
-                print("sigma associated with LNA mean {}".format(lna_sigma))
-                #LNA_t = LNA_res["t"].squeeze()
-                #eigen_V_t= LNA_res["eigen_V_t"].squeeze()
-                #eigen_DIR_V_t = LNA_res["eigendir"].squeeze()
+            #     ## 2D Reconstruction
+            #     s_peak, sigma_firstComp = find_peaks_variances(fp_range_s.data, fp_solution.data)
+            #     fp_mean_manifold_x = self.spline_x_s_given_s(s_peak)
+            #     fp_mean_manifold_y = self.spline_y_s_given_s(s_peak)
 
-                dist_a = LA.norm(self.xa - x_t_final)
-                dist_b = LA.norm(self.xb - x_t_final)
-                if dist_a<dist_b:
-                    # need to solve LNA for b
-                    around_attractor_start = self.xb + np.sqrt(np.diag(Big_Sigma))
-                    radau_solution = self.get_t_s(np.hstack([0, around_attractor_start]) , V_t0, Big_Sigma, dt, max(MaxTime, observed_t))[1]
-                    # variances 
-                    opposite_sigma = np.sqrt(min(radau_solution[4], radau_solution[7]))
-                    print("Sigma of Opposite attractor: {}".format(opposite_sigma))
+            #     fp_means_manifold = np.column_stack([fp_mean_manifold_x, fp_mean_manifold_y])
+            #     #print("sigma of components bottom {} upper {}".format(sigma_firstComp[0], sigma_firstComp[1]))
+            #     # take LNA final solution
+            #     LNA_res = checks_done[4]
+            #     x_t_final = LNA_res["x_t"].squeeze()[-1,:]
+            #     V_t_final = LNA_res["V_t"].squeeze()[-1,:]
+            #     print("Limiting Variance")
+            #     lna_sigma = np.sqrt(min(V_t_final[0], V_t_final[3]))
+            #     print("sigma associated with LNA mean {}".format(lna_sigma))
+            #     #LNA_t = LNA_res["t"].squeeze()
+            #     #eigen_V_t= LNA_res["eigen_V_t"].squeeze()
+            #     #eigen_DIR_V_t = LNA_res["eigendir"].squeeze()
+
+            #     dist_a = LA.norm(self.xa - x_t_final)
+            #     dist_b = LA.norm(self.xb - x_t_final)
+            #     if dist_a<dist_b:
+            #         # need to solve LNA for b
+            #         around_attractor_start = self.xb + np.sqrt(np.diag(Big_Sigma))
+            #         radau_solution = self.get_t_s(np.hstack([0, around_attractor_start]) , V_t0, Big_Sigma, dt, max(MaxTime, observed_t))[1]
+            #         # variances 
+            #         opposite_sigma = np.sqrt(min(radau_solution[4], radau_solution[7]))
+            #         print("Sigma of Opposite attractor: {}".format(opposite_sigma))
                     
-                    V_ta = np.array([sigma_firstComp[1], 0, 0, lna_sigma])
-                    V_tb = np.array([sigma_firstComp[0], 0, 0, opposite_sigma])
-                else:
-                    # need to solve LNA for a
-                    around_attractor_start = self.xa + np.sqrt(np.diag(Big_Sigma))
-                    radau_solution = self.get_t_s(np.hstack([0, around_attractor_start]) , V_t0, Big_Sigma, dt, max(MaxTime, observed_t))[1]
-                    opposite_sigma = np.sqrt(min(radau_solution[4], radau_solution[7]))
-                    print("Sigma of Opposite attractor: {}".format(opposite_sigma))
-                    V_ta = np.array([sigma_firstComp[1], 0, 0, opposite_sigma])
-                    V_tb = np.array([sigma_firstComp[0], 0, 0, lna_sigma])
+            #         V_ta = np.array([sigma_firstComp[1], 0, 0, lna_sigma])
+            #         V_tb = np.array([sigma_firstComp[0], 0, 0, opposite_sigma])
+            #     else:
+            #         # need to solve LNA for a
+            #         around_attractor_start = self.xa + np.sqrt(np.diag(Big_Sigma))
+            #         radau_solution = self.get_t_s(np.hstack([0, around_attractor_start]) , V_t0, Big_Sigma, dt, max(MaxTime, observed_t))[1]
+            #         opposite_sigma = np.sqrt(min(radau_solution[4], radau_solution[7]))
+            #         print("Sigma of Opposite attractor: {}".format(opposite_sigma))
+            #         V_ta = np.array([sigma_firstComp[1], 0, 0, opposite_sigma])
+            #         V_tb = np.array([sigma_firstComp[0], 0, 0, lna_sigma])
 
-                # Now run the two sep LNAs:
-                lna_a = self.get_t_s(np.hstack([0, fp_means_manifold[1,:]]), V_ta, Big_Sigma, dt, lna2_time)[1]
-                lna_b = self.get_t_s(np.hstack([0, fp_means_manifold[0,:]]), V_tb, Big_Sigma, dt, lna2_time)[1]
+            #     # Now run the two sep LNAs:
+            #     lna_a = self.get_t_s(np.hstack([0, fp_means_manifold[1,:]]), V_ta, Big_Sigma, dt, lna2_time)[1]
+            #     lna_b = self.get_t_s(np.hstack([0, fp_means_manifold[0,:]]), V_tb, Big_Sigma, dt, lna2_time)[1]
 
-                weights_b_a = find_weights(fp_range_s.data, fp_solution.data)
-                # loglik = np.sum--- 2dMixture
-                gausMix_oneD_pdf(means, variances, weights)
-                loglik = 0
+            #     weights_b_a = find_weights(fp_range_s.data, fp_solution.data)
+            #     # loglik = np.sum--- 2dMixture
+            #     gausMix_oneD_pdf(means, variances, weights)
+            #     loglik = 0
         else:
             # compute likelihood for the multivariate gaussian
             loglik = np.sum(np.log(multivariate_normal.pdf(observed_data, check_mean, checks_covar)))

@@ -281,7 +281,7 @@ from pde import PDE, CartesianGrid, MemoryStorage, ScalarField, SteadyStateTrack
 from pde import CallbackTracker, DataTracker
 
 # FP_run, checkin for unstable manifold
-def FP_run(t_max, arclength_s_bitOut, spline_p0s_given_s, spline_vf_given_s, spline_dd_s_given_s, interval_track):
+def FP_run_0flux(t_max, arclength_s_bitOut, spline_p0s_given_s, spline_vf_given_s, spline_dd_s_given_s, interval_track):
     #arclength_s = np.copy(arclength_s_bitOut)
     #arclength_s = arcl_s_extended_tau
 
@@ -378,3 +378,100 @@ def FP_run(t_max, arclength_s_bitOut, spline_p0s_given_s, spline_vf_given_s, spl
     
     # trackers save it at t=0 and then every interval
     return s_field, sol, data_tracker_flux_atS
+
+def FP_run(t_max, arclength_s_bitOut, spline_p0s_given_s, spline_vf_given_s, spline_dd_s_given_s, interval_track):
+    #arclength_s = np.copy(arclength_s_bitOut)
+    #arclength_s = arcl_s_extended_tau
+
+    # saddle_point = 0
+    saddle_arcl_s = np.abs(arclength_s_bitOut).argmin()
+    
+    grid_arcl = CartesianGrid([[arclength_s_bitOut[0], arclength_s_bitOut[-1]]], [len(arclength_s_bitOut)], periodic=False)#
+    #grid_arcl = CartesianGrid([[arcl_t_extended_tau[0], arcl_t_extended_tau[-25]]], [len(arcl_t_extended_tau[:-25])], periodic=False)#
+
+    s_field = ScalarField.from_expression(grid_arcl, "x")
+
+    # initial values - same
+    initial_p = spline_p0s_given_s(s_field.data)
+    initial_p[initial_p<0] = 0
+    # properly normalized?
+    initial_p = initial_p/np.sum(initial_p)
+    state_p0 = pde.ScalarField(grid_arcl, data=initial_p, label="p0")
+
+    # solve the equation and store the trajectory
+    #storage = MemoryStorage()
+
+    #t_max = 5
+
+    # Saving in Disk
+    # storage=FileStorage("FP_pypde_results/ArcLength_1D_Asym{}_sigmae{}_T".format(str(v).replace(".", ""),
+    #                                                                  str(se).replace(".", ""),
+    #                                                                 t_max))
+
+    storage=MemoryStorage()
+    #trackers = [storage.tracker(interval=pt)]
+    #controller1 = Controller(ExplicitSolver(eq), t_range=T, tracker=trackers)
+
+    ##############
+    # Dynamics projected
+
+    spline_s_vec_field = spline_vf_given_s(s_field.data)
+    velocity = pde.VectorField(grid_arcl, data=spline_s_vec_field)
+
+    # Diffusion
+    dd_s_field = spline_dd_s_given_s(s_field.data)
+    dd_s_field_FP = (dd_s_field**2)/2
+    diffusion_s = pde.VectorField(grid_arcl, data=dd_s_field_FP)
+
+    eq = pde.PDE({'P': f'-divergence(P * V) + laplace(P * D)'}, consts={'V': velocity, 'D': diffusion_s}         
+                ,bc = [{"value":0},{"value":0}] )
+
+    # def get_flux_allGrad(data):
+    #     P = data
+    #     return P.gradient(bc = [{"value":0}])
+
+    # def get_flux_atSad(data):
+    #     P = data
+    #     P_grad = P.gradient(bc = [{"value":0}])
+    #     return P_grad.interpolate(0)
+    
+    # def get_flux_atSad_fast(data):
+    #     P = data.data
+    #     P_grad = np.gradient(P)
+    #     flux_sad = P_grad[saddle_arcl_s]
+    #     return flux_sad
+        
+    # def calc_max(data):
+    #     P = data.data
+    #     how_many_higher = np.sum(P>P[saddle_arcl_s])/len(P)
+    #     return how_many_higher<0.1
+    
+    # simulate the pde
+    #data_tracker_flux = DataTracker(get_flux_allGrad, interval=0.1)
+    # data_tracker_flux_atS = DataTracker(get_flux_atSad_fast, interval = interval_track)
+    
+    # simulate the pde
+    #pde.SteadyStateTracker(interval = 0.1, rtol = 1e-04)
+    # def check_simulation(data):
+    #     cond = get_flux_atSad_fast(data)
+    #     #print(cond)
+    #     if (np.abs(cond) < 5e-06) & (not calc_max(data)):
+    #         raise pde.base.FinishedSimulation("No flux at saddle")
+
+    # tracker_check = CallbackTracker(check_simulation, interval=interval_track)
+    
+    #adaptive=True, method="explicit_mpi"
+    
+    sol = eq.solve(state_p0, t_range=t_max, dt=1e-5) # No trackers needed here
+                                                              #storage.tracker(track_t)])
+        #data_tracker_flux_atS
+
+    #sol = eq.solve(state_p0, t_range=t_max, dt=1e-5, tracker={"progress", "steady_state", storage.tracker(track_t)})
+
+    #plt.plot(s_field.data, storage.data[-1], label = "t final")
+
+    # plot the trajectory as a space-time plot
+    #plot_kymograph(storage)
+    
+    # trackers save it at t=0 and then every interval
+    return s_field, sol #, data_tracker_flux_atS
