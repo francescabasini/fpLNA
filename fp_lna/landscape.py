@@ -233,16 +233,17 @@ class landscape:
                         #t_eval = timespan,
                         method = "Radau",
                         y0 = y0, args = (Big_Sigma, self.uvw, self.G_point_lna, self.J_lna))
+        YY_radau = sol.y
         # check whether indeed ts and t are the same
         if MaxTime - sol.t[-2] <= dt:
             t_s_blob = MaxTime
         else:
             t_s_blob = np.round(sol.t[-2], 2)
-        return t_s_blob
+        return t_s_blob, YY_radau[:,-1] #return final solution
     
     def get_LNA(self, m_0, V_t0, Big_Sigma, observed_t, dt, MaxTime = 15):  
         
-        t_s = self.get_t_s(m_0, V_t0, Big_Sigma, dt, max(MaxTime, observed_t))
+        t_s = self.get_t_s(m_0, V_t0, Big_Sigma, dt, max(MaxTime, observed_t))[0]
         # right or not?
         max_t_ts = max(observed_t, t_s)
 
@@ -422,9 +423,9 @@ class landscape:
             t_star = np.copy(tt)
             print("t_star: {}".format(t_star*dt))
             # fpLNA necessary? True
-            return True, selected_mean_stop_find, selected_cov_stop_find, t_star #, projection_vals
+            return True, selected_mean_stop_find, selected_cov_stop_find, t_star, LNA_res #return also LNA results
 
-    # function that gets you from mean-variance to initialisation of FP
+    # function that from mean-variance return initialisation of FP
     def initialise_FP(self, xt_critical, Vt_critical, Big_Sigma, range_fp = 400):
         integrated_g, spline_projection = IntegrateOverP(xt_critical, Vt_critical, self.direction_P_scaled, self.xs, print_ = False)
         p0_s_vals, spline_p0s_given_s, s_tau_gives_s =  get_p0_s(1/self.m_unstable, -1/self.q_unstable/self.m_unstable,
@@ -491,10 +492,56 @@ class landscape:
             
                 print("t_no_flux_fp: {}".format(t_no_flux))
                 print("2D reconstruction")
+
+                lna2_time = observed_t - t_no_flux
+                print("Running the two lnas until observed time, remaining {}".format(lna2_time))
+
                 ## 2D Reconstruction
-                
-                # density reconstruction
+                s_peak, sigma_firstComp = find_peaks_variances(fp_range_s.data, fp_solution.data)
+                fp_mean_manifold_x = self.spline_x_s_given_s(s_peak)
+                fp_mean_manifold_y = self.spline_y_s_given_s(s_peak)
+
+                fp_means_manifold = np.column_stack([fp_mean_manifold_x, fp_mean_manifold_y])
+                #print("sigma of components bottom {} upper {}".format(sigma_firstComp[0], sigma_firstComp[1]))
+                # take LNA final solution
+                LNA_res = checks_done[4]
+                x_t_final = LNA_res["x_t"].squeeze()[-1,:]
+                V_t_final = LNA_res["V_t"].squeeze()[-1,:]
+                print("Limiting Variance")
+                lna_sigma = np.sqrt(min(V_t_final[0], V_t_final[3]))
+                print("sigma associated with LNA mean {}".format(lna_sigma))
+                #LNA_t = LNA_res["t"].squeeze()
+                #eigen_V_t= LNA_res["eigen_V_t"].squeeze()
+                #eigen_DIR_V_t = LNA_res["eigendir"].squeeze()
+
+                dist_a = LA.norm(self.xa - x_t_final)
+                dist_b = LA.norm(self.xb - x_t_final)
+                if dist_a<dist_b:
+                    # need to solve LNA for b
+                    around_attractor_start = self.xb + np.sqrt(np.diag(Big_Sigma))
+                    radau_solution = self.get_t_s(np.hstack([0, around_attractor_start]) , V_t0, Big_Sigma, dt, max(MaxTime, observed_t))[1]
+                    # variances 
+                    opposite_sigma = np.sqrt(min(radau_solution[4], radau_solution[7]))
+                    print("Sigma of Opposite attractor: {}".format(opposite_sigma))
+                    
+                    V_ta = np.array([sigma_firstComp[1], 0, 0, lna_sigma])
+                    V_tb = np.array([sigma_firstComp[0], 0, 0, opposite_sigma])
+                else:
+                    # need to solve LNA for a
+                    around_attractor_start = self.xa + np.sqrt(np.diag(Big_Sigma))
+                    radau_solution = self.get_t_s(np.hstack([0, around_attractor_start]) , V_t0, Big_Sigma, dt, max(MaxTime, observed_t))[1]
+                    opposite_sigma = np.sqrt(min(radau_solution[4], radau_solution[7]))
+                    print("Sigma of Opposite attractor: {}".format(opposite_sigma))
+                    V_ta = np.array([sigma_firstComp[1], 0, 0, opposite_sigma])
+                    V_tb = np.array([sigma_firstComp[0], 0, 0, lna_sigma])
+
+                # Now run the two sep LNAs:
+                lna_a = self.get_t_s(np.hstack([0, fp_means_manifold[1,:]]), V_ta, Big_Sigma, dt, lna2_time)[1]
+                lna_b = self.get_t_s(np.hstack([0, fp_means_manifold[0,:]]), V_tb, Big_Sigma, dt, lna2_time)[1]
+
+                weights_b_a = find_weights(fp_range_s.data, fp_solution.data)
                 # loglik = np.sum--- 2dMixture
+                gausMix_oneD_pdf(means, variances, weights)
                 loglik = 0
         else:
             # compute likelihood for the multivariate gaussian
